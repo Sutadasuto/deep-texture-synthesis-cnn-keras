@@ -9,23 +9,23 @@
 from __future__ import print_function
 
 import numpy as np
+import os
 import warnings
 
-from keras.models import Model
-from keras.layers import Flatten, Dense, Input
-from keras.layers import Conv2D
-from keras.layers import MaxPooling2D
-from keras.layers import AveragePooling2D
-from keras.layers import GlobalMaxPooling2D
-from keras.layers import GlobalAveragePooling2D
-from keras.preprocessing import image
-from keras.utils import layer_utils
-from keras.utils.data_utils import get_file
-from keras import backend as K
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Flatten, Dense, Input
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.layers import MaxPooling2D
+from tensorflow.keras.layers import AveragePooling2D
+from tensorflow.keras.layers import GlobalMaxPooling2D
+from tensorflow.keras.layers import GlobalAveragePooling2D
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.utils import get_file
+import tensorflow.keras.backend as K
 from keras_applications.imagenet_utils import decode_predictions
 from keras_applications.imagenet_utils import preprocess_input
 from keras_applications.imagenet_utils import _obtain_input_shape
-from keras.engine.topology import get_source_inputs
+from tensorflow.keras.utils import get_source_inputs
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg19_weights_tf_dim_ordering_tf_kernels.h5'
@@ -36,7 +36,13 @@ def VGG19(include_top=True, weights='imagenet',
           input_tensor=None, input_shape=None,
           pooling=None,
           classes=1000):
-    """Instantiates the VGG19 architecture.
+    """
+    Modified version of the original implementation to work on Tensorflow 2.
+    Code tested using version 2.1.0.
+    Model weights are downloaded from source and saved locally (in case the weights are later removed from web)
+    Original documentation below (notice this version doesn't have Theano support)
+
+    Instantiates the VGG19 architecture.
 
     Optionally loads weights pre-trained
     on ImageNet. Note that when using TensorFlow,
@@ -162,32 +168,16 @@ def VGG19(include_top=True, weights='imagenet',
 
     # load weights
     if weights == 'imagenet':
+        root_dir = os.getcwd()
         if include_top:
-            weights_path = get_file('vgg19_weights_tf_dim_ordering_tf_kernels.h5',
-                                    WEIGHTS_PATH,
-                                    cache_subdir='models')
+            weights_path = os.path.join(root_dir, 'vgg19_weights_tf_dim_ordering_tf_kernels.h5')
+            weights_url = WEIGHTS_PATH
         else:
-            weights_path = get_file('vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5',
-                                    WEIGHTS_PATH_NO_TOP,
-                                    cache_subdir='models')
+            weights_path = os.path.join(root_dir, 'vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5')
+            weights_url = WEIGHTS_PATH_NO_TOP
+
+        if not os.path.exists(weights_path):
+            weights_path = get_file(weights_path, weights_url)
         model.load_weights(weights_path)
-        if K.backend() == 'theano':
-            layer_utils.convert_all_kernels_in_model(model)
 
-        if K.image_data_format() == 'channels_first':
-            if include_top:
-                maxpool = model.get_layer(name='block5_pool')
-                shape = maxpool.output_shape[1:]
-                dense = model.get_layer(name='fc1')
-                layer_utils.convert_dense_weights_data_format(dense, shape, 'channels_first')
-
-            if K.backend() == 'tensorflow':
-                warnings.warn('You are using the TensorFlow backend, yet you '
-                              'are using the Theano '
-                              'image data format convention '
-                              '(`image_data_format="channels_first"`). '
-                              'For best performance, set '
-                              '`image_data_format="channels_last"` in '
-                              'your Keras config '
-                              'at ~/.keras/keras.json.')
     return model

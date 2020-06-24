@@ -1,4 +1,10 @@
 '''
+    @author: Rodrigo Rill-Garcia
+    This file contains a modified version of the original project,
+    intended for use with Tensorflow 2 instead of Keras with Tensorflow backend.
+    This code was tested with Tensorflow version 2.1.0.
+    See original documentation below.
+
     @author: Md Sarfarazul Haque
     This file contains the main class, of this project, 
     that synthesise a texture based on the provided texture.
@@ -26,21 +32,22 @@
 '''
 
 
-''' Importing Packages '''
 import numpy as np 
 import matplotlib.pyplot as plt
 from scipy.optimize import fmin_l_bfgs_b
-from keras.preprocessing import image
 import time
-from scipy.misc import imsave
-from keras.applications import vgg19
+import imageio
+import os
 
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
+
+from tensorflow.keras.applications import vgg19
+from tensorflow.keras.preprocessing import image
+import tensorflow.keras.backend as K
 # This is a customized VGG19 network taken from fchollet implementation of VGG19
 # from https://github.com/fchollet/deep-learning-models/blob/master/vgg19.py
-from vgg19 import VGG19      
-from keras import backend as K 
-import tensorflow as tf
-
+from vgg19 import VGG19
 
 
 class DeepTexture(object):
@@ -69,7 +76,7 @@ class DeepTexture(object):
         # To handle the case when base image is `None`
         # This generate a random noise matrix of size of our texture matrix.
         if base_img_path == None:
-            x = np.random.rand(self.width, self.height, 3)
+            x = np.random.rand(self.height, self.width, 3)
 
             # Converting [Width, Height, Channels] to [1, Width, Height, Channels]
             x = np.expand_dims(x, axis=0)
@@ -83,12 +90,7 @@ class DeepTexture(object):
         self.tex_path = tex_path
         self.gen_prefix = gen_prefix
         # Setting the value of input_shape
-        if K.image_data_format() == 'channels_last':
-            self.input_shape = (1, self.height, self.width, self.channels)
-        else:
-            self.input_shape = (1, self.channels, self.height, self.width)
-
-
+        self.input_shape = (1, self.height, self.width, self.channels)
 
     def preprocess_image(self, img_path):
         '''
@@ -101,7 +103,7 @@ class DeepTexture(object):
         '''
 
         # Load the image using keras helper class `image`
-        img = image.load_img(img_path, target_size=(self.width, self.height))
+        img = image.load_img(img_path, target_size=(self.height, self.width))
         # Converting image to array
         img = image.img_to_array(img)
         img = np.expand_dims(img, axis=0)
@@ -109,8 +111,6 @@ class DeepTexture(object):
         # Applying preprocessing to the image
         img = vgg19.preprocess_input(img.astype(dtype=np.float32))
         return img
-
-
     
     def deprocess_image(self, x):
         '''
@@ -122,21 +122,17 @@ class DeepTexture(object):
         '''
 
         # Checking the data format supported by the backend
-        if K.image_data_format() == 'channels_first':
-            x = x.reshape((self.channels, self.height, self.width))
-            x = x.transpose((1, 2, 0))
-        else:
-            x = x.reshape((self.height, self.width, self.channels))
+        x = x.reshape((self.height, self.width, self.channels))
+
         # Remove zero-center by mean pixel
         x[:, :, 0] += 103.939
         x[:, :, 1] += 116.779
         x[:, :, 2] += 123.68
+
         # 'BGR'->'RGB'
         x = x[:, :, ::-1]
         x = np.clip(x, 0, 255).astype('uint8')
         return x
-
-    
 
     def gram_matrix(self, x):
         '''
@@ -163,10 +159,9 @@ class DeepTexture(object):
 
         # Calculating and preprocessing G, the Gram Matrix associated with a layer
         gram = tf.matmul(F, F, adjoint_a=True)
-        gram /= 2*tf.to_float(shape[1]*shape[2])
+        # gram /= 2*tf.to_float(shape[1]*shape[2])
+        gram /= 2*tf.cast(shape[1]*shape[2], dtype=tf.float32)
         return gram
-
-
 
     def get_loss_per_layer(self, tex, gen):
         '''
@@ -184,7 +179,6 @@ class DeepTexture(object):
         Gen = self.gram_matrix(gen)
         return K.sum(K.square(tf.subtract(Tex, Gen)))
 
-
     def eval_loss_and_grads(self, x):
         '''
             This function calculates the total loss associated with synthesised with respect to the texture image.
@@ -200,10 +194,7 @@ class DeepTexture(object):
         '''
 
         # Checking and reshaping the 
-        if K.image_data_format() == 'channels_first':
-            x = x.reshape((1, 3, self.height, self.width))
-        else:
-            x = x.reshape((1, self.height, self.width, 3))
+        x = x.reshape((1, self.height, self.width, 3))
 
         # Getting loss_value and grad_values in the form of a list.
         outs = self.f_outputs([x])
@@ -213,8 +204,6 @@ class DeepTexture(object):
         else:
             grad_values = np.array(outs[1:]).flatten().astype('float64')
         return loss_value, grad_values
-
-
 
     def get_loss(self, x):
         '''
@@ -244,8 +233,6 @@ class DeepTexture(object):
         self.loss_value = None
         self.grad_values = None
         return grad_values
-        
-
     
     def buildTexture(self, features='all', iterations=50):
         '''
@@ -262,6 +249,11 @@ class DeepTexture(object):
             This function does not return anything but saves the synthesised image after every updation.
 
         '''
+
+        # Creating folder to save resulting images
+        folder_name = "results"
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
 
         # Creating variables and placeholders
         tex_img = K.variable(self.preprocess_image(self.tex_path))
@@ -320,8 +312,9 @@ class DeepTexture(object):
         loss = loss + tf.image.total_variation(gen_img)
         
         # Calculating gradient
+        # grads = tf.gradients(loss, gen_img)
         grads = tf.gradients(loss, gen_img)
-        # Creating a list of loss and gradients 
+        # Creating a list of loss and gradients
         outputs = [loss]
         if isinstance(grads, (list, tuple)):
             outputs += grads
@@ -337,7 +330,7 @@ class DeepTexture(object):
         # Reducing total loss using fmin_l_bfgs_b function from scipy.
         # For more information regarding fmin_l_bfgs_b refer to https://www.google.co.in
         for i in range(iterations):
-            print('Start of iteration', i)
+            print('Start of iteration', i+1)
             start_time = time.time()
 
             # Evalutaing for one iteration.
@@ -348,15 +341,15 @@ class DeepTexture(object):
 
             # Deprocessing image
             img = self.deprocess_image(x.copy())
-            fname = self.gen_prefix + '_at_iteration_%d.png' % i
+            fname = self.gen_prefix + '_at_iteration_%d.png' % (i+1)
 
             # Saving the synthesised image
-            imsave(fname, img)
+            imageio.imwrite(os.path.join(folder_name, fname), img)
             end_time = time.time()
-            print('Image saved as', fname)
-            print('Iteration %d completed in %ds' % (i, end_time - start_time))
+            print('Image saved as', os.path.join(folder_name, fname))
+            print('Iteration %d completed in %ds' % (i+1, end_time - start_time))
 
     
 # Sample run.
 tex = DeepTexture('data/inputs/pebbles.jpg')
-tex.buildTexture(features='pool')
+tex.buildTexture(features='pool', iterations=1000)

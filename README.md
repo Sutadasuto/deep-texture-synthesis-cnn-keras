@@ -1,5 +1,7 @@
 # deep-texture-synthesis-cnn-keras
 
+*** Fork note: This version has been modified to work using Tensorflow 2 (tested on 2.1.0) instead of Keras. Therefore it doesn't have Theano support ***
+
 In this project I have implemented Textures Synthesis Using Convolutional Neural Networks paper by Gatys et.al. In this paper they have introduce a new model of natural textures generation based on the feature spaces
 of convolutional neural networks optimised for object recognition. Within the model, textures are represented by the correlations between feature maps in several layers of
 the network. They showed that across layers the texture representations increasingly
@@ -15,7 +17,7 @@ convolutional neural networks.
 <br>
 
 # Output Image
-The following output is generated after 500 iterations, you can control number of iterations by passing the value of iteration in the function buildTexture
+The following output is generated after 1000 iterations, you can control number of iterations by passing the value of iteration in the function buildTexture
 <br>
 <img src='data/outputs/pebbles.png' />
 
